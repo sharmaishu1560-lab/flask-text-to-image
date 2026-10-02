@@ -1,24 +1,23 @@
 from flask import Flask, render_template, request, jsonify
-from huggingface_hub import InferenceClient
+from openai import OpenAI
 from dotenv import load_dotenv
 
 import os
 import uuid
+import base64
 
 load_dotenv()
 
 app = Flask(__name__)
 
-# Get Hugging Face token
-HF_TOKEN = os.getenv("HF_TOKEN")
+# Get OpenAI API key
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-if not HF_TOKEN:
-    raise ValueError("HF_TOKEN is not set in the .env file.")
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY is not set in the .env file.")
 
-# Hugging Face client
-client = InferenceClient(
-    api_key=HF_TOKEN
-)
+# OpenAI client
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 # Folder for generated images
 OUTPUT_FOLDER = "static/generated"
@@ -34,7 +33,6 @@ def home():
 def generate_image():
 
     try:
-
         # Get prompt from browser
         prompt = request.json.get('prompt')
 
@@ -46,11 +44,21 @@ def generate_image():
         print("Generating image...")
         print("Prompt:", prompt)
 
-        # Generate image using Hugging Face
-        image = client.text_to_image(
+        # Generate image using OpenAI
+        response = client.images.generate(
+            model="gpt-image-1",
             prompt=prompt,
-            model="black-forest-labs/FLUX.1-schnell"
+            size="1024x1024",
+            quality="low"
         )
+
+        # Get generated image data
+        image_data = response.data[0].b64_json
+
+        if not image_data:
+            return jsonify({
+                'error': 'No image was returned.'
+            }), 500
 
         # Create unique filename
         filename = f"{uuid.uuid4().hex}.png"
@@ -60,8 +68,9 @@ def generate_image():
             filename
         )
 
-        # Save image
-        image.save(filepath)
+        # Decode and save image
+        with open(filepath, "wb") as image_file:
+            image_file.write(base64.b64decode(image_data))
 
         print("Image generated successfully!")
         print("Saved to:", filepath)
